@@ -6,103 +6,20 @@
     <title>Real-Time Folder Stream - Sender</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f0f2f5;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
-            box-sizing: border-box;
-        }
-        .container {
-            background-color: #ffffff;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-            width: 100%;
-            max-width: 500px; /* Adjusted max-width for single panel */
-            display: flex;
-            flex-direction: column;
-            gap: 30px;
-        }
-        .panel {
-            flex: 1;
-            padding: 20px;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-        .panel h2 {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #334155;
-            margin-bottom: 10px;
-        }
-        input[type="text"], input[type="file"] {
-            border: 1px solid #cbd5e1;
-            padding: 10px;
-            border-radius: 8px;
-            width: 100%;
-            box-sizing: border-box;
-        }
-        button {
-            background-color: #4f46e5;
-            color: white;
-            padding: 10px 15px;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
-            font-weight: 600;
-            transition: background-color 0.2s ease, transform 0.1s ease;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        button:hover {
-            background-color: #4338ca;
-            transform: translateY(-1px);
-        }
-        button:active {
-            transform: translateY(0);
-            box-shadow: none;
-        }
-        button:disabled {
-            background-color: #9ca3af;
-            cursor: not-allowed;
-            box-shadow: none;
-        }
-        .status-message {
-            margin-top: 10px;
-            padding: 10px;
-            border-radius: 8px;
-            background-color: #e0f2fe;
-            color: #0284c7;
-            border: 1px solid #7dd3fc;
-            font-size: 0.9rem;
-        }
-        .error-message {
-            background-color: #fee2e2;
-            color: #dc2626;
-            border: 1px solid #fca5a5;
-        }
-        .file-list {
-            max-height: 200px;
-            overflow-y: auto;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 10px;
-            background-color: #f8fafc;
-        }
-        .file-item {
-            padding: 5px 0;
-            border-bottom: 1px dashed #e2e8f0;
-        }
-        .file-item:last-child {
-            border-bottom: none;
-        }
+        body { font-family: 'Inter', sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+        .container { background-color: #ffffff; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1); width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 30px; }
+        .panel { flex: 1; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px; display: flex; flex-direction: column; gap: 15px; }
+        .panel h2 { font-size: 1.5rem; font-weight: bold; color: #334155; margin-bottom: 10px; }
+        input[type="text"], input[type="file"] { border: 1px solid #cbd5e1; padding: 10px; border-radius: 8px; width: 100%; box-sizing: border-box; }
+        button { background-color: #4f46e5; color: white; padding: 10px 15px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; transition: background-color 0.2s ease, transform 0.1s ease; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        button:hover { background-color: #4338ca; transform: translateY(-1px); }
+        button:active { transform: translateY(0); box-shadow: none; }
+        button:disabled { background-color: #9ca3af; cursor: not-allowed; box-shadow: none; }
+        .status-message { margin-top: 10px; padding: 10px; border-radius: 8px; background-color: #e0f2fe; color: #0284c7; border: 1px solid #7dd3fc; font-size: 0.9rem; }
+        .error-message { background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
+        .file-list { max-height: 200px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background-color: #f8fafc; }
+        .file-item { padding: 5px 0; border-bottom: 1px dashed #e2e8f0; }
+        .file-item:last-child { border-bottom: none; }
     </style>
 </head>
 <body>
@@ -122,27 +39,27 @@
             <div id="senderFileList" class="file-list hidden">
                 <h3>Files to Stream:</h3>
             </div>
+            <button id="showQrBtn" style="margin-top:10px;">Show QR for this page</button>
+            <div id="qrContainer" style="display:none; margin-top:10px; text-align:center;">
+                <div id="qrcode"></div>
+                <div style="font-size:0.9em; color:#555; margin-top:5px;">Scan this QR on another device</div>
+            </div>
         </div>
     </div>
 
     <script>
-        // Construct the base URL for HTTP requests and WebSocket connections.
-        // If window.location.hostname is empty (e.g., in some iframe environments), default to 'localhost'.
         const hostname = window.location.hostname || 'localhost';
-        const port = window.location.port || 1000; // Default to 3000 if port is not specified
-        // const BASE_URL = `http://localhost:7070`;
+        const port = window.location.port || 8080;
         const BASE_URL = `${window.location.protocol}//${hostname}:${port}`;
-    //  const BASE_URL = `https://file-streaming-backend.onrender.com`;
-// Use the same host/port as the frontend for WSS
-const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
         console.log(`Sender Frontend attempting to connect to:`);
         console.log(`HTTP BASE_URL: ${BASE_URL}`);
         console.log(`WebSocket WS_URL: ${WS_URL}`);
 
         let ws = null;
         let currentRoomId = null;
-        let filesToStream = []; // For sender
+        let filesToStream = [];
 
         // DOM Elements
         const senderRoomIdInput = document.getElementById('senderRoomIdInput');
@@ -153,8 +70,9 @@ const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
         const startStreamBtn = document.getElementById('startStreamBtn');
         const senderStatus = document.getElementById('senderStatus');
         const senderFileList = document.getElementById('senderFileList');
+        const showQrBtn = document.getElementById('showQrBtn');
+        const qrContainer = document.getElementById('qrContainer');
 
-        // --- Helper Functions ---
         function setStatus(element, message, isError = false) {
             element.textContent = message;
             if (isError) {
@@ -168,7 +86,7 @@ const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
 
         function connectWebSocket(role, roomId) {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.close(); // Close existing connection if any
+                ws.close();
             }
             ws = new WebSocket(WS_URL);
 
@@ -183,16 +101,14 @@ const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
 
             ws.onmessage = async event => {
                 if (typeof event.data === 'string') {
-                    // JSON messages (status, file_start, file_end, error)
                     try {
                         const data = JSON.parse(event.data);
-                        console.log('Received JSON:', data);
+                        console.log('Received JSON data :', data);
 
                         if (data.type === 'status') {
                             setStatus(senderStatus, data.message);
                         } else if (data.type === 'error') {
                             setStatus(senderStatus, data.message, true);
-                            // On error, allow rejoining
                             senderJoinBtn.disabled = false;
                             generateRoomIdBtn.disabled = false;
                             selectFolderBtn.disabled = true;
@@ -226,11 +142,8 @@ const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
         // --- Sender Logic ---
         generateRoomIdBtn.addEventListener('click', async () => {
             try {
-                // Use BASE_URL for HTTP fetch calls
                 const response = await fetch(`${BASE_URL}/generate-room-id`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 senderRoomIdInput.value = data.roomId;
             } catch (error) {
@@ -249,7 +162,7 @@ const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
         });
 
         selectFolderBtn.addEventListener('click', () => {
-            folderInput.click(); // Trigger the hidden file input
+            folderInput.click();
         });
 
         folderInput.addEventListener('change', (event) => {
@@ -281,40 +194,124 @@ const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
                 setStatus(senderStatus, 'No folder selected to stream.', true);
                 return;
             }
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                setStatus(senderStatus, 'WebSocket is not connected.', true);
+                return;
+            }
 
             setStatus(senderStatus, `Starting stream of ${filesToStream.length} files...`);
             startStreamBtn.disabled = true;
             selectFolderBtn.disabled = true;
 
-            const formData = new FormData();
-            filesToStream.forEach(file => {
-                // Use webkitRelativePath as the field name to preserve folder structure on backend
-                formData.append(file.webkitRelativePath || file.name, file);
-            });
+            // Helper to stream a single file
+            async function streamFile(file) {
+                return new Promise((resolve, reject) => {
+                    ws.send(JSON.stringify({
+                        type: 'file_start',
+                        filename: file.name,
+                        relativePath: file.webkitRelativePath || file.name,
+                        mimetype: file.type || 'application/octet-stream',
+                        roomId: currentRoomId // <-- ADD THIS
+                    }));
 
-            try {
-                // Use BASE_URL for HTTP fetch calls
-                const response = await fetch(`${BASE_URL}/upload/${currentRoomId}`, {
-                    method: 'POST',
-                    body: formData,
+                    const chunkSize = 64 * 1024; // 64KB
+                    let offset = 0;
+                    const reader = new FileReader();
+
+                    reader.onload = function(e) {
+                        if (ws.readyState !== WebSocket.OPEN) {
+                            reject(new Error('WebSocket closed during file stream.'));
+                            return;
+                        }
+                        ws.send(e.target.result); // Send ArrayBuffer chunk
+                        offset += chunkSize;
+                        if (offset < file.size) {
+                            readSlice(offset);
+                        } else {
+                            ws.send(JSON.stringify({
+                                type: 'file_end',
+                                filename: file.name,
+                                relativePath: file.webkitRelativePath || file.name,
+                                roomId: currentRoomId // <-- ADD THIS
+                            }));
+                            resolve();
+                        }
+                    };
+
+                    reader.onerror = function(e) {
+                        reject(new Error('FileReader error: ' + e.target.error));
+                    };
+
+                    function readSlice(o) {
+                        const slice = file.slice(o, o + chunkSize);
+                        reader.readAsArrayBuffer(slice);
+                    }
+                    readSlice(0);
                 });
+            }
 
-                if (response.ok) {
-                    setStatus(senderStatus, 'Files are being streamed. Check receiver status.');
-                } else {
-                    const errorText = await response.text();
-                    setStatus(senderStatus, `Stream failed: ${errorText}. Is the backend running and receiver connected?`, true);
-                    startStreamBtn.disabled = false;
-                    selectFolderBtn.disabled = false;
+            // Stream all files sequentially
+            for (let i = 0; i < filesToStream.length; i++) {
+                setStatus(senderStatus, `Streaming file ${i+1} of ${filesToStream.length}: ${filesToStream[i].name}`);
+                try {
+                    await streamFile(filesToStream[i]);
+                } catch (err) {
+                    setStatus(senderStatus, `Error streaming file: ${filesToStream[i].name}. ${err.message}`, true);
+                    break;
                 }
             }
-            catch (error) {
-                console.error('Error during file upload:', error);
-                setStatus(senderStatus, `Network error during stream: ${error.message}. Is the backend running at ${BASE_URL}?`, true);
-                startStreamBtn.disabled = false;
-                selectFolderBtn.disabled = false;
-            }
+
+            ws.send(JSON.stringify({
+                type: 'folder_complete',
+                message: `All ${filesToStream.length} files streamed successfully.`,
+                roomId: currentRoomId // <-- ADD THIS
+            }));
+
+            setStatus(senderStatus, `All ${filesToStream.length} files streamed!`);
+            startStreamBtn.disabled = false;
+            selectFolderBtn.disabled = false;
         });
+
+        // QR Code Logic
+        showQrBtn.addEventListener('click', () => {
+            const roomId = senderRoomIdInput.value.trim();
+            if (!roomId) {
+                setStatus(senderStatus, 'Please generate or enter a Room ID first.', true);
+                return;
+            }
+            const qrCodeUrl = `${BASE_URL}/?roomId=${roomId}`;
+            qrContainer.style.display = 'block';
+            document.getElementById('qrcode').innerHTML = ''; // Clear previous QR code
+
+            // Generate QR code using qrcode.js
+            const qrcode = new QRCode(document.getElementById("qrcode"), {
+                text: qrCodeUrl,
+                width: 128,
+                height: 128,
+                colorDark : "#000000",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.H
+            });
+        });
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.qrcode/1.0/jquery.qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script>
+    document.getElementById('showQrBtn').addEventListener('click', function() {
+        const qrContainer = document.getElementById('qrContainer');
+        qrContainer.style.display = 'block';
+        // Use the current page's full URL (including IP if accessed via IP)
+        const url = window.location.href;
+        // Only generate once
+        if (!document.getElementById('qrcode').hasChildNodes()) {
+            new QRCode(document.getElementById('qrcode'), {
+                text: url,
+                width: 180,
+                height: 180
+            });
+        }
+    });
     </script>
 </body>
 </html>

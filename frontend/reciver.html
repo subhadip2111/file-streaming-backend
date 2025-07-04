@@ -23,7 +23,7 @@
             border-radius: 15px;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
             width: 100%;
-            max-width: 500px; /* Adjusted max-width for single panel */
+            max-width: 500px;
             display: flex;
             flex-direction: column;
             gap: 30px;
@@ -116,31 +116,30 @@
             <div id="receivedFilesList" class="file-list hidden">
                 <h3>Received Files:</h3>
             </div>
+            <button id="downloadAllBtn" class="hidden" style="margin-top:10px;">Save All</button>
         </div>
     </div>
 
     <script>
-        // Construct the base URL for HTTP requests and WebSocket connections.
-        // If window.location.hostname is empty (e.g., in some iframe environments), default to 'localhost'.
-    const hostname = window.location.hostname || 'localhost';
-const port = window.location.port || 1000; // Default to 3000 if port is not specified
-const BASE_URL = `${window.location.protocol}//${hostname}:${port}`;
-const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
+        // Use secure WebSocket if on HTTPS, and connect to the same host/port as the frontend
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
+
         console.log(`Receiver Frontend attempting to connect to:`);
-        console.log(`HTTP BASE_URL: ${BASE_URL}`);
         console.log(`WebSocket WS_URL: ${WS_URL}`);
 
         let ws = null;
         let currentRoomId = null;
-        let receivedFileChunks = []; // For receiver, stores chunks of the current file
-        let currentReceivingFile = null; // For receiver, stores metadata of the current file
+        let receivedFileChunks = [];
+        let currentReceivingFile = null;
+        let allReceivedFiles = []; // <-- Store all files here
 
         // DOM Elements
         const receiverRoomIdInput = document.getElementById('receiverRoomIdInput');
         const receiverJoinBtn = document.getElementById('receiverJoinBtn');
         const receiverStatus = document.getElementById('receiverStatus');
         const receivedFilesList = document.getElementById('receivedFilesList');
+        const downloadAllBtn = document.getElementById('downloadAllBtn');
 
         // --- Helper Functions ---
         function setStatus(element, message, isError = false) {
@@ -156,9 +155,11 @@ const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
 
         function connectWebSocket(role, roomId) {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.close(); // Close existing connection if any
+                ws.close();
             }
             ws = new WebSocket(WS_URL);
+
+            ws.binaryType = 'arraybuffer';
 
             ws.onopen = () => {
                 console.log('WebSocket connected');
@@ -170,7 +171,6 @@ const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
 
             ws.onmessage = async event => {
                 if (typeof event.data === 'string') {
-                    // JSON messages (status, file_start, file_end, error)
                     try {
                         const data = JSON.parse(event.data);
                         console.log('Received JSON:', data);
@@ -179,7 +179,6 @@ const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
                             setStatus(receiverStatus, data.message);
                         } else if (data.type === 'error') {
                             setStatus(receiverStatus, data.message, true);
-                            // On error, allow rejoining
                             receiverJoinBtn.disabled = false;
                         } else if (data.type === 'room_ready') {
                             setStatus(receiverStatus, data.message);
@@ -188,36 +187,49 @@ const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
                             receivedFileChunks = [];
                             setStatus(receiverStatus, `Receiving: ${currentReceivingFile.filename} (${currentReceivingFile.relativePath})`);
                             receivedFilesList.classList.remove('hidden');
-                            // Add a temporary entry to the list
                             const listItem = document.createElement('div');
                             listItem.className = 'file-item';
-                            listItem.id = `receiving-${currentReceivingFile.filename.replace(/[^a-zA-Z0-9]/g, '')}`;
+                            listItem.id = `receiving-${currentReceivingFile.filename.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}`;
                             listItem.textContent = `Receiving: ${currentReceivingFile.relativePath}`;
                             receivedFilesList.appendChild(listItem);
+                            console.log(`Started receiving file: ${currentReceivingFile.filename}. MIME Type: ${currentReceivingFile.mimetype}`);
                         } else if (data.type === 'file_end' && role === 'receiver') {
                             if (currentReceivingFile) {
+                                console.log(`Finished receiving file: ${currentReceivingFile.filename}. Total chunks received: ${receivedFileChunks.length}`);
+                                let finalAccumulatedSize = receivedFileChunks.reduce((acc, chunk) => acc + (chunk.byteLength || chunk.size || chunk.length || 0), 0);
+                                console.log(`Final accumulated size before Blob creation: ${finalAccumulatedSize} bytes.`);
+
+                                // Convert ArrayBuffers to Blobs
                                 const blob = new Blob(receivedFileChunks, { type: currentReceivingFile.mimetype });
-                                const url = URL.createObjectURL(blob);
+                                console.log(`Created Blob of size: ${blob.size} bytes for MIME type: ${currentReceivingFile.mimetype}`);
 
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = currentReceivingFile.relativePath;
-                                document.body.appendChild(a); // Required for Firefox
-                                a.click();
-                                document.body.removeChild(a); // Clean up
-
-                                URL.revokeObjectURL(url); // Clean up memory
-
-                                const listItem = document.getElementById(`receiving-${currentReceivingFile.filename.replace(/[^a-zA-Z0-9]/g, '')}`);
-                                if (listItem) {
-                                    listItem.textContent = `Downloaded: ${currentReceivingFile.relativePath}`;
+                                if (blob.size === 0) {
+                                    console.warn(`Blob for ${currentReceivingFile.filename} is 0 bytes. Data might not have been received.`);
+                                    setStatus(receiverStatus, `Error: Received 0 bytes for ${currentReceivingFile.filename}`, true);
                                 }
-                                setStatus(receiverStatus, `Downloaded: ${currentReceivingFile.filename}`);
+
+                                // Store file for later download
+                                allReceivedFiles.push({
+                                    blob,
+                                    filename: currentReceivingFile.filename,
+                                    relativePath: currentReceivingFile.relativePath || currentReceivingFile.filename
+                                });
+
+                                // Update file list
+                                const newListItem = document.createElement('div');
+                                newListItem.className = 'file-item';
+                                newListItem.textContent = `Ready: ${currentReceivingFile.relativePath || currentReceivingFile.filename} (${blob.size} bytes)`;
+                                receivedFilesList.appendChild(newListItem);
+
+                                setStatus(receiverStatus, `Received: ${currentReceivingFile.filename}`);
                                 currentReceivingFile = null;
                                 receivedFileChunks = [];
                             }
                         } else if (data.type === 'folder_complete' && role === 'receiver') {
                             setStatus(receiverStatus, data.message + ' All files received.');
+                            if (allReceivedFiles.length > 0) {
+                                downloadAllBtn.classList.remove('hidden');
+                            }
                         }
                     } catch (e) {
                         console.error('Error parsing WebSocket JSON message:', e);
@@ -227,6 +239,11 @@ const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
                     // Binary messages (file chunks)
                     if (role === 'receiver' && currentReceivingFile) {
                         receivedFileChunks.push(event.data);
+                        let currentChunkSize = event.data.byteLength || event.data.size || event.data.length || 0;
+                        let currentTotalSize = receivedFileChunks.reduce((acc, chunk) => acc + (chunk.byteLength || chunk.size || chunk.length || 0), 0);
+                        console.log(`Received chunk for ${currentReceivingFile.filename}, size: ${currentChunkSize} bytes. Accumulated total: ${currentTotalSize} bytes. Total chunks: ${receivedFileChunks.length}`);
+                    } else {
+                        console.warn('Received binary data but no current file is being processed or role is not receiver.');
                     }
                 }
             };
@@ -243,10 +260,37 @@ const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
             };
         }
 
+        // --- Download All Logic ---
+        downloadAllBtn.addEventListener('click', async () => {
+            if (downloadAllBtn.disabled) return; // Prevent multiple clicks
+
+            downloadAllBtn.disabled = true;
+            setStatus(receiverStatus, `Downloading all files...`);
+
+            for (const file of allReceivedFiles) {
+                const url = URL.createObjectURL(file.blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = file.relativePath;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }
+
+            setStatus(receiverStatus, `All files downloaded!`);
+            downloadAllBtn.classList.add('hidden');
+            allReceivedFiles = []; // Clear files after download
+        });
+
         // --- Receiver Logic ---
         receiverJoinBtn.addEventListener('click', () => {
             const roomId = receiverRoomIdInput.value.trim();
             if (roomId) {
+                // Reset state for new session
+                allReceivedFiles = [];
+                receivedFilesList.innerHTML = '<h3>Received Files:</h3>';
+                downloadAllBtn.classList.add('hidden');
                 connectWebSocket('receiver', roomId);
             } else {
                 setStatus(receiverStatus, 'Please enter a Room ID.', true);
