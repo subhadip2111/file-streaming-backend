@@ -134,8 +134,8 @@
         const BASE_URL = `${window.location.protocol}//${hostname}:${port}`;
     //  const BASE_URL = `https://file-streaming-backend.onrender.com`;
 
-        const WS_URL = `ws://${hostname}:${port}`;
-
+const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+const WS_URL = `${wsProtocol}://${hostname}:${port}`;
         console.log(`Sender Frontend attempting to connect to:`);
         console.log(`HTTP BASE_URL: ${BASE_URL}`);
         console.log(`WebSocket WS_URL: ${WS_URL}`);
