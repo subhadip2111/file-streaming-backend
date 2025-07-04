@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Folder Stream - Receiver</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 500px; /* Adjusted max-width for single panel */
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+        .panel {
+            flex: 1;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .panel h2 {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #334155;
+            margin-bottom: 10px;
+        }
+        input[type="text"] {
+            border: 1px solid #cbd5e1;
+            padding: 10px;
+            border-radius: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4f46e5;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        button:hover {
+            background-color: #4338ca;
+            transform: translateY(-1px);
+        }
+        button:active {
+            transform: translateY(0);
+            box-shadow: none;
+        }
+        button:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        .status-message {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            background-color: #e0f2fe;
+            color: #0284c7;
+            border: 1px solid #7dd3fc;
+            font-size: 0.9rem;
+        }
+        .error-message {
+            background-color: #fee2e2;
+            color: #dc2626;
+            border: 1px solid #fca5a5;
+        }
+        .file-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 10px;
+            background-color: #f8fafc;
+        }
+        .file-item {
+            padding: 5px 0;
+            border-bottom: 1px dashed #e2e8f0;
+        }
+        .file-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Receiver Panel -->
+        <div class="panel">
+            <h2>Receiver</h2>
+            <input type="text" id="receiverRoomIdInput" placeholder="Enter Room ID">
+            <button id="receiverJoinBtn">Join Room as Receiver</button>
+            <div id="receiverStatus" class="status-message">Ready.</div>
+            <div id="receivedFilesList" class="file-list hidden">
+                <h3>Received Files:</h3>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Construct the base URL for HTTP requests and WebSocket connections.
+        // If window.location.hostname is empty (e.g., in some iframe environments), default to 'localhost'.
+        const hostname = window.location.hostname || 'localhost';
+        const port = window.location.port || 7070; // Default to 3000 if port is not specified
+        const BASE_URL = `${window.location.protocol}//${hostname}:${port}`;
+        const WS_URL = `ws://${hostname}:${port}`;
+
+        console.log(`Receiver Frontend attempting to connect to:`);
+        console.log(`HTTP BASE_URL: ${BASE_URL}`);
+        console.log(`WebSocket WS_URL: ${WS_URL}`);
+
+        let ws = null;
+        let currentRoomId = null;
+        let receivedFileChunks = []; // For receiver, stores chunks of the current file
+        let currentReceivingFile = null; // For receiver, stores metadata of the current file
+
+        // DOM Elements
+        const receiverRoomIdInput = document.getElementById('receiverRoomIdInput');
+        const receiverJoinBtn = document.getElementById('receiverJoinBtn');
+        const receiverStatus = document.getElementById('receiverStatus');
+        const receivedFilesList = document.getElementById('receivedFilesList');
+
+        // --- Helper Functions ---
+        function setStatus(element, message, isError = false) {
+            element.textContent = message;
+            if (isError) {
+                element.classList.add('error-message');
+                element.classList.remove('status-message');
+            } else {
+                element.classList.remove('error-message');
+                element.classList.add('status-message');
+            }
+        }
+
+        function connectWebSocket(role, roomId) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close(); // Close existing connection if any
+            }
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                ws.send(JSON.stringify({ type: 'join', role: role, roomId: roomId }));
+                currentRoomId = roomId;
+                setStatus(receiverStatus, `Connecting to room ${roomId} as receiver...`);
+                receiverJoinBtn.disabled = true;
+            };
+
+            ws.onmessage = async event => {
+                if (typeof event.data === 'string') {
+                    // JSON messages (status, file_start, file_end, error)
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('Received JSON:', data);
+
+                        if (data.type === 'status') {
+                            setStatus(receiverStatus, data.message);
+                        } else if (data.type === 'error') {
+                            setStatus(receiverStatus, data.message, true);
+                            // On error, allow rejoining
+                            receiverJoinBtn.disabled = false;
+                        } else if (data.type === 'room_ready') {
+                            setStatus(receiverStatus, data.message);
+                        } else if (data.type === 'file_start' && role === 'receiver') {
+                            currentReceivingFile = data;
+                            receivedFileChunks = [];
+                            setStatus(receiverStatus, `Receiving: ${currentReceivingFile.filename} (${currentReceivingFile.relativePath})`);
+                            receivedFilesList.classList.remove('hidden');
+                            // Add a temporary entry to the list
+                            const listItem = document.createElement('div');
+                            listItem.className = 'file-item';
+                            listItem.id = `receiving-${currentReceivingFile.filename.replace(/[^a-zA-Z0-9]/g, '')}`;
+                            listItem.textContent = `Receiving: ${currentReceivingFile.relativePath}`;
+                            receivedFilesList.appendChild(listItem);
+                        } else if (data.type === 'file_end' && role === 'receiver') {
+                            if (currentReceivingFile) {
+                                const blob = new Blob(receivedFileChunks, { type: currentReceivingFile.mimetype });
+                                const url = URL.createObjectURL(blob);
+
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = currentReceivingFile.relativePath;
+                                document.body.appendChild(a); // Required for Firefox
+                                a.click();
+                                document.body.removeChild(a); // Clean up
+
+                                URL.revokeObjectURL(url); // Clean up memory
+
+                                const listItem = document.getElementById(`receiving-${currentReceivingFile.filename.replace(/[^a-zA-Z0-9]/g, '')}`);
+                                if (listItem) {
+                                    listItem.textContent = `Downloaded: ${currentReceivingFile.relativePath}`;
+                                }
+                                setStatus(receiverStatus, `Downloaded: ${currentReceivingFile.filename}`);
+                                currentReceivingFile = null;
+                                receivedFileChunks = [];
+                            }
+                        } else if (data.type === 'folder_complete' && role === 'receiver') {
+                            setStatus(receiverStatus, data.message + ' All files received.');
+                        }
+                    } catch (e) {
+                        console.error('Error parsing WebSocket JSON message:', e);
+                        setStatus(receiverStatus, 'Error processing server message.', true);
+                    }
+                } else {
+                    // Binary messages (file chunks)
+                    if (role === 'receiver' && currentReceivingFile) {
+                        receivedFileChunks.push(event.data);
+                    }
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                setStatus(receiverStatus, 'Disconnected from room. Please rejoin.', true);
+                receiverJoinBtn.disabled = false;
+            };
+
+            ws.onerror = error => {
+                console.error('WebSocket error:', error);
+                setStatus(receiverStatus, 'WebSocket error occurred.', true);
+            };
+        }
+
+        // --- Receiver Logic ---
+        receiverJoinBtn.addEventListener('click', () => {
+            const roomId = receiverRoomIdInput.value.trim();
+            if (roomId) {
+                connectWebSocket('receiver', roomId);
+            } else {
+                setStatus(receiverStatus, 'Please enter a Room ID.', true);
+            }
+        });
+    </script>
+</body>
+</html>

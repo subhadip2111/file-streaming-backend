@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Folder Stream - Sender</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 500px; /* Adjusted max-width for single panel */
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+        .panel {
+            flex: 1;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .panel h2 {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #334155;
+            margin-bottom: 10px;
+        }
+        input[type="text"], input[type="file"] {
+            border: 1px solid #cbd5e1;
+            padding: 10px;
+            border-radius: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4f46e5;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        button:hover {
+            background-color: #4338ca;
+            transform: translateY(-1px);
+        }
+        button:active {
+            transform: translateY(0);
+            box-shadow: none;
+        }
+        button:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        .status-message {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            background-color: #e0f2fe;
+            color: #0284c7;
+            border: 1px solid #7dd3fc;
+            font-size: 0.9rem;
+        }
+        .error-message {
+            background-color: #fee2e2;
+            color: #dc2626;
+            border: 1px solid #fca5a5;
+        }
+        .file-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 10px;
+            background-color: #f8fafc;
+        }
+        .file-item {
+            padding: 5px 0;
+            border-bottom: 1px dashed #e2e8f0;
+        }
+        .file-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sender Panel -->
+        <div class="panel">
+            <h2>Sender</h2>
+            <div class="flex items-center gap-2">
+                <input type="text" id="senderRoomIdInput" placeholder="Enter Room ID" class="flex-grow">
+                <button id="generateRoomIdBtn">Generate ID</button>
+            </div>
+            <button id="senderJoinBtn">Join Room as Sender</button>
+            <input type="file" id="folderInput" webkitdirectory mozdirectory multiple style="display: none;">
+            <button id="selectFolderBtn" disabled>Select Folder</button>
+            <button id="startStreamBtn" disabled>Start Streaming</button>
+            <div id="senderStatus" class="status-message">Ready.</div>
+            <div id="senderFileList" class="file-list hidden">
+                <h3>Files to Stream:</h3>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Construct the base URL for HTTP requests and WebSocket connections.
+        // If window.location.hostname is empty (e.g., in some iframe environments), default to 'localhost'.
+        const hostname = window.location.hostname || 'localhost';
+        const port = window.location.port || 7070; // Default to 3000 if port is not specified
+        const BASE_URL = `http://localhost:7070`;
+        const WS_URL = `ws://${hostname}:${port}`;
+
+        console.log(`Sender Frontend attempting to connect to:`);
+        console.log(`HTTP BASE_URL: ${BASE_URL}`);
+        console.log(`WebSocket WS_URL: ${WS_URL}`);
+
+        let ws = null;
+        let currentRoomId = null;
+        let filesToStream = []; // For sender
+
+        // DOM Elements
+        const senderRoomIdInput = document.getElementById('senderRoomIdInput');
+        const generateRoomIdBtn = document.getElementById('generateRoomIdBtn');
+        const senderJoinBtn = document.getElementById('senderJoinBtn');
+        const selectFolderBtn = document.getElementById('selectFolderBtn');
+        const folderInput = document.getElementById('folderInput');
+        const startStreamBtn = document.getElementById('startStreamBtn');
+        const senderStatus = document.getElementById('senderStatus');
+        const senderFileList = document.getElementById('senderFileList');
+
+        // --- Helper Functions ---
+        function setStatus(element, message, isError = false) {
+            element.textContent = message;
+            if (isError) {
+                element.classList.add('error-message');
+                element.classList.remove('status-message');
+            } else {
+                element.classList.remove('error-message');
+                element.classList.add('status-message');
+            }
+        }
+
+        function connectWebSocket(role, roomId) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close(); // Close existing connection if any
+            }
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                ws.send(JSON.stringify({ type: 'join', role: role, roomId: roomId }));
+                currentRoomId = roomId;
+                setStatus(senderStatus, `Connecting to room ${roomId} as sender...`);
+                senderJoinBtn.disabled = true;
+                generateRoomIdBtn.disabled = true;
+            };
+
+            ws.onmessage = async event => {
+                if (typeof event.data === 'string') {
+                    // JSON messages (status, file_start, file_end, error)
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('Received JSON:', data);
+
+                        if (data.type === 'status') {
+                            setStatus(senderStatus, data.message);
+                        } else if (data.type === 'error') {
+                            setStatus(senderStatus, data.message, true);
+                            // On error, allow rejoining
+                            senderJoinBtn.disabled = false;
+                            generateRoomIdBtn.disabled = false;
+                            selectFolderBtn.disabled = true;
+                            startStreamBtn.disabled = true;
+                        } else if (data.type === 'room_ready') {
+                            setStatus(senderStatus, data.message + ' You can now select a folder.');
+                            selectFolderBtn.disabled = false;
+                        }
+                    } catch (e) {
+                        console.error('Error parsing WebSocket JSON message:', e);
+                        setStatus(senderStatus, 'Error processing server message.', true);
+                    }
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                setStatus(senderStatus, 'Disconnected from room. Please rejoin.', true);
+                selectFolderBtn.disabled = true;
+                startStreamBtn.disabled = true;
+                senderJoinBtn.disabled = false;
+                generateRoomIdBtn.disabled = false;
+            };
+
+            ws.onerror = error => {
+                console.error('WebSocket error:', error);
+                setStatus(senderStatus, 'WebSocket error occurred.', true);
+            };
+        }
+
+        // --- Sender Logic ---
+        generateRoomIdBtn.addEventListener('click', async () => {
+            try {
+                // Use BASE_URL for HTTP fetch calls
+                const response = await fetch(`${BASE_URL}/generate-room-id`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                senderRoomIdInput.value = data.roomId;
+            } catch (error) {
+                console.error('Error generating room ID:', error);
+                setStatus(senderStatus, `Failed to generate Room ID. Is the backend running at ${BASE_URL}?`, true);
+            }
+        });
+
+        senderJoinBtn.addEventListener('click', () => {
+            const roomId = senderRoomIdInput.value.trim();
+            if (roomId) {
+                connectWebSocket('sender', roomId);
+            } else {
+                setStatus(senderStatus, 'Please enter a Room ID.', true);
+            }
+        });
+
+        selectFolderBtn.addEventListener('click', () => {
+            folderInput.click(); // Trigger the hidden file input
+        });
+
+        folderInput.addEventListener('change', (event) => {
+            filesToStream = Array.from(event.target.files);
+            if (filesToStream.length > 0) {
+                setStatus(senderStatus, `Selected ${filesToStream.length} files. Ready to stream.`);
+                startStreamBtn.disabled = false;
+                senderFileList.classList.remove('hidden');
+                senderFileList.innerHTML = '<h3>Files to Stream:</h3>';
+                filesToStream.forEach(file => {
+                    const listItem = document.createElement('div');
+                    listItem.className = 'file-item';
+                    listItem.textContent = file.webkitRelativePath || file.name;
+                    senderFileList.appendChild(listItem);
+                });
+            } else {
+                setStatus(senderStatus, 'No files selected.', true);
+                startStreamBtn.disabled = true;
+                senderFileList.classList.add('hidden');
+            }
+        });
+
+        startStreamBtn.addEventListener('click', async () => {
+            if (!currentRoomId) {
+                setStatus(senderStatus, 'Please join a room first.', true);
+                return;
+            }
+            if (filesToStream.length === 0) {
+                setStatus(senderStatus, 'No folder selected to stream.', true);
+                return;
+            }
+
+            setStatus(senderStatus, `Starting stream of ${filesToStream.length} files...`);
+            startStreamBtn.disabled = true;
+            selectFolderBtn.disabled = true;
+
+            const formData = new FormData();
+            filesToStream.forEach(file => {
+                // Use webkitRelativePath as the field name to preserve folder structure on backend
+                formData.append(file.webkitRelativePath || file.name, file);
+            });
+
+            try {
+                // Use BASE_URL for HTTP fetch calls
+                const response = await fetch(`${BASE_URL}/upload/${currentRoomId}`, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (response.ok) {
+                    setStatus(senderStatus, 'Files are being streamed. Check receiver status.');
+                } else {
+                    const errorText = await response.text();
+                    setStatus(senderStatus, `Stream failed: ${errorText}. Is the backend running and receiver connected?`, true);
+                    startStreamBtn.disabled = false;
+                    selectFolderBtn.disabled = false;
+                }
+            }
+            catch (error) {
+                console.error('Error during file upload:', error);
+                setStatus(senderStatus, `Network error during stream: ${error.message}. Is the backend running at ${BASE_URL}?`, true);
+                startStreamBtn.disabled = false;
+                selectFolderBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
