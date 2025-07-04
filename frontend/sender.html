@@ -130,7 +130,10 @@
         // If window.location.hostname is empty (e.g., in some iframe environments), default to 'localhost'.
         const hostname = window.location.hostname || 'localhost';
         const port = window.location.port || 7070; // Default to 3000 if port is not specified
-        const BASE_URL = `http://localhost:7070`;
+        // const BASE_URL = `http://localhost:7070`;
+
+     const BASE_URL = `https://file-streaming-backend.onrender.com`;
+
         const WS_URL = `ws://${hostname}:${port}`;
 
         console.log(`Sender Frontend attempting to connect to:`);
