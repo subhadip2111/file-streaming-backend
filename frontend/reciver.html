@@ -125,8 +125,8 @@
         const hostname = window.location.hostname || 'localhost';
         const port = window.location.port || 1000; // Default to 3000 if port is not specified
         const BASE_URL = `${window.location.protocol}//${hostname}:${port}`;
-        const WS_URL = `ws://${hostname}:${port}`;
-
+const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+const WS_URL = `${wsProtocol}://${window.location.host}/ws`;
         console.log(`Receiver Frontend attempting to connect to:`);
         console.log(`HTTP BASE_URL: ${BASE_URL}`);
         console.log(`WebSocket WS_URL: ${WS_URL}`);
