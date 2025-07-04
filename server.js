@@ -217,7 +217,7 @@ app.get('/generate-room-id', (req, res) => {
     res.json({ roomId: newRoomId });
 });
 
-const PORT = process.env.PORT || 7070;
+const PORT = process.env.PORT || 1000;
 server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
     console.log(`WebSocket server running on ws://localhost:${PORT}`);
